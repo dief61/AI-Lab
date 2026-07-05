@@ -1,1 +1,9 @@
-uvicorn main:app --reload --port 8080
+# main.py
+
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"message": "Hello World"}
