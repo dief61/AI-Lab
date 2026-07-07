@@ -33,7 +33,7 @@ uv venv
 source .venv/bin/activate
 
 # 4. Abhängigkeiten blitzschnell installieren
-uv pip install fastapi uvicorn
+uv pip install fastapi uvicorn jinja2
 ```
 
 ---
