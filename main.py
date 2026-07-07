@@ -21,16 +21,16 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # Setup templates directory
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 if not os.path.exists(templates_dir):
-    os.makedirs(static_dir)
+    os.makedirs(templates_dir)
 
 templates = Jinja2Templates(directory=templates_dir)
 
 
 @app.get("/")
-def index_page():
+def index_page(request: None = None):
     """Serve the main HTML page with greeting form."""
     return templates.TemplateResponse("index.html", {
-        "request": None,
+        "request": request,
         "title": "Hallo Welt API"
     })
 
@@ -80,3 +80,17 @@ def health_check():
 def api_greeting(mood: str | None = Query(None)):
     """API endpoint for the greeting service."""
     return greeting(mood=mood)
+
+
+@app.get("/api/v1/config/ui")
+def ui_config():
+    """UI configuration endpoint for API v1."""
+    return {
+        "title": "Hallo Welt API",
+        "version": "1.0.0",
+        "endpoints": [
+            {"path": "/", "method": "GET", "description": "Main HTML page"},
+            {"path": "/greeting", "method": "GET", "description": "Greeting with mood parameter"},
+            {"path": "/health", "method": "GET", "description": "Health check"}
+        ]
+    }
