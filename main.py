@@ -1,12 +1,29 @@
 # main.py
 
 from fastapi import FastAPI, Query
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+import os
 
 app = FastAPI(
     title="Hallo Welt API",
     description="A simple German greeting service",
     version="1.0.0"
 )
+
+# Mount static files directory
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir)
+
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Setup templates directory
+templates_dir = os.path.join(os.path.dirname(__file__), "templates")
+if not os.path.exists(templates_dir):
+    os.makedirs(templates_dir)
+
+templates = Jinja2Templates(directory=templates_dir)
 
 
 @app.get("/")
@@ -54,3 +71,18 @@ def greeting(mood: str | None = Query(None, description="Optional mood parameter
 def health_check():
     """Health check endpoint for service monitoring."""
     return {"status": "healthy"}
+
+
+@app.get("/", include_in_schema=False)
+def index_page():
+    """Serve the main HTML page with greeting form."""
+    return templates.TemplateResponse("index.html", {
+        "request": None,
+        "title": "Hallo Welt API"
+    })
+
+
+@app.get("/api/greeting")
+def api_greeting(mood: str | None = Query(None)):
+    """API endpoint for the greeting service."""
+    return greeting(mood=mood)
