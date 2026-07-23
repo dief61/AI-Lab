@@ -14,22 +14,28 @@
     font-size: 1rem; font-weight: 600; border-radius: 6px 6px 0 0; margin-right: 4px;
   }
   .tabs button.active { background: #4361ee; color: #fff; border-color: #4361ee; }
+  .toolbar { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .toolbar label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; cursor: pointer; }
+  .toolbar input[type=checkbox] { width: 1rem; height: 1rem; cursor: pointer; }
   .table-wrap { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08); overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #e9ecef; white-space: nowrap; }
-  th { background: #f8f9fa; font-weight: 600; cursor: pointer; user-select: none; }
-  th:hover { background: #e9ecef; }
+  th { background: #f8f9fa; font-weight: 600; }
+  tr.deleted { background: #fff0f0; }
+  tr.deleted:hover { background: #ffe0e0; }
   tr:hover { background: #f1f3f5; }
   .actions { display: flex; gap: 0.5rem; }
   button {
     padding: 0.4rem 0.9rem; border: none; border-radius: 4px; cursor: pointer;
     font-size: 0.85rem; font-weight: 500;
   }
-  .btn-add { background: #4361ee; color: #fff; margin-bottom: 1rem; padding: 0.6rem 1.2rem; font-size: 0.95rem; }
+  .btn-add { background: #4361ee; color: #fff; padding: 0.6rem 1.2rem; font-size: 0.95rem; }
   .btn-edit { background: #ffd166; color: #1a1a2e; }
   .btn-delete { background: #ef476f; color: #fff; }
+  .btn-restore { background: #06d6a0; color: #fff; }
   .btn-save { background: #06d6a0; color: #fff; }
   .btn-cancel { background: #adb5bd; color: #fff; }
+  .btn-restore-batch { background: #06d6a0; color: #fff; padding: 0.6rem 1.2rem; font-size: 0.95rem; }
   .modal {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4);
     justify-content: center; align-items: center; z-index: 1000;
@@ -51,6 +57,7 @@
     z-index: 2000; font-size: 0.9rem;
   }
   .toast.show { opacity: 1; }
+  .check-col { width: 40px; text-align: center; }
 </style>
 </head>
 <body>
@@ -62,7 +69,14 @@
   <button id="tabBuyer" onclick="switchTab('buyer')">Käufer (Buyer)</button>
 </div>
 
-<button class="btn-add" onclick="openCreate()">+ Neu anlegen</button>
+<div class="toolbar">
+  <button class="btn-add" onclick="openCreate()">+ Neu anlegen</button>
+  <label id="deletedToggle" style="display:none">
+    <input type="checkbox" onchange="toggleDeleted()">
+    Gelöschte anzeigen
+  </label>
+  <button class="btn-restore-batch" id="restoreBatchBtn" style="display:none" onclick="restoreSelected()">Wiederherstellen</button>
+</div>
 
 <div class="table-wrap">
   <table>
@@ -71,7 +85,6 @@
   </table>
 </div>
 
-<!-- Modal -->
 <div class="modal" id="formModal">
   <div class="modal-content">
     <h2 id="modalTitle">Eintrag</h2>
@@ -79,17 +92,20 @@
   </div>
 </div>
 
-<!-- Toast -->
 <div class="toast" id="toast"></div>
 
 <script>
 const API = {
   seller: { list: '/api/sellers', single: id => `/api/sellers/${id}` },
-  buyer:  { list: '/api/buyers',  single: id => `/api/buyers/${id}`  },
+  buyer:  { list: '/api/buyers',  single: id => `/api/buyers/${id}`,
+            restore: id => `/api/buyers/${id}/restore`,
+            restoreBatch: '/api/buyers/restore' },
 };
 
 let currentTab = 'seller';
 let editId = null;
+let showDeleted = false;
+let allBuyers = [];
 
 const SELLER_FIELDS = [
   { key: 'name', label: 'Name' },
@@ -113,6 +129,10 @@ function switchTab(tab) {
   document.getElementById('tabSeller').className = tab === 'seller' ? 'active' : '';
   document.getElementById('tabBuyer').className  = tab === 'buyer' ? 'active' : '';
   editId = null;
+  const toggle = document.getElementById('deletedToggle');
+  toggle.style.display = tab === 'buyer' ? '' : 'none';
+  if (tab !== 'buyer') showDeleted = false;
+  document.getElementById('restoreBatchBtn').style.display = 'none';
   loadTable();
 }
 
@@ -133,27 +153,83 @@ function fieldsFor(tab) {
   return tab === 'seller' ? SELLER_FIELDS : BUYER_FIELDS;
 }
 
+function toggleDeleted() {
+  showDeleted = document.querySelector('#deletedToggle input').checked;
+  document.getElementById('restoreBatchBtn').style.display = showDeleted ? '' : 'none';
+  loadTable();
+}
+
 async function loadTable() {
-  const data = await api(API[currentTab].list);
+  if (currentTab === 'buyer') {
+    const url = showDeleted ? '/api/buyers?geloescht=1' : '/api/buyers';
+    allBuyers = await api(url);
+  }
+  const data = currentTab === 'buyer' ? allBuyers : await api(API[currentTab].list);
   const fields = fieldsFor(currentTab);
   const head = document.getElementById('tableHead');
   const body = document.getElementById('tableBody');
 
-  head.innerHTML = '<tr>' + fields.map(f => `<th>${f.label}</th>`).join('') + '<th>Aktionen</th></tr>';
+  let extraHeaders = '<th>Aktionen</th>';
+  let showCheck = currentTab === 'buyer' && showDeleted;
+  if (showCheck) extraHeaders = '<th class="check-col"><input type="checkbox" onchange="toggleAll(event)"></th>' + extraHeaders;
+
+  head.innerHTML = '<tr>' + fields.map(f => `<th>${f.label}</th>`).join('') + extraHeaders + '</tr>';
+
   if (!data || data.length === 0) {
-    body.innerHTML = '<tr><td colspan="' + (fields.length + 1) + '" class="empty">Keine Einträge vorhanden</td></tr>';
+    body.innerHTML = '<tr><td colspan="' + (fields.length + (showCheck ? 2 : 1)) + '" class="empty">Keine Einträge vorhanden</td></tr>';
     return;
   }
+
   body.innerHTML = data.map(item => {
     const cells = fields.map(f => `<td>${item[f.key] ?? ''}</td>`).join('');
-    return `<tr>
-      ${cells}
-      <td class="actions">
+    let checkCell = '';
+    if (showCheck) {
+      checkCell = `<td class="check-col"><input type="checkbox" class="row-check" value="${item.id}"></td>`;
+    }
+    let actionBtns;
+    if (item.geloescht) {
+      actionBtns = `<button class="btn-restore" onclick="restoreSingle(${item.id})">Wiederherstellen</button>`;
+    } else {
+      actionBtns = `
         <button class="btn-edit" onclick="openEdit(${item.id})">Bearbeiten</button>
-        <button class="btn-delete" onclick="deleteEntry(${item.id})">Löschen</button>
-      </td>
+        <button class="btn-delete" onclick="deleteEntry(${item.id})">Löschen</button>`;
+    }
+    const rowClass = item.geloescht ? ' class="deleted"' : '';
+    return `<tr${rowClass}>
+      ${checkCell}${cells}
+      <td class="actions">${actionBtns}</td>
     </tr>`;
   }).join('');
+}
+
+function toggleAll(e) {
+  document.querySelectorAll('.row-check').forEach(cb => cb.checked = e.target.checked);
+}
+
+function getSelectedIds() {
+  return Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.value));
+}
+
+async function restoreSelected() {
+  const ids = getSelectedIds();
+  if (ids.length === 0) { showToast('Keine Einträge ausgewählt'); return; }
+  try {
+    await api(API.buyer.restoreBatch, { method: 'PUT', body: JSON.stringify({ ids }) });
+    showToast(`${ids.length} Eintrag/Einträge wiederhergestellt`);
+    loadTable();
+  } catch (err) {
+    showToast('Fehler: ' + err.message);
+  }
+}
+
+async function restoreSingle(id) {
+  try {
+    await api(API.buyer.restore(id), { method: 'PUT' });
+    showToast('Eintrag wiederhergestellt');
+    loadTable();
+  } catch (err) {
+    showToast('Fehler: ' + err.message);
+  }
 }
 
 function openCreate() {
@@ -200,11 +276,9 @@ function closeModal() {
 
 async function saveEntry(e) {
   e.preventDefault();
-  const form = e.target;
   const fields = fieldsFor(currentTab);
   const data = {};
   fields.forEach(f => { data[f.key] = document.getElementById(`f_${f.key}`).value; });
-
   try {
     if (editId) {
       await api(API[currentTab].single(editId), { method: 'PUT', body: JSON.stringify(data) });
