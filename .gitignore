@@ -1,3 +1,4 @@
 .aider*
 *.Identifier
 __pycache__.opencode/
+.opencode/
