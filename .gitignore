@@ -12,5 +12,9 @@ __pycache__/
 # OpenCode & AI Tools
 .opencode/
 
+# Logs & temporäre Dateien
+log/
+tmp/
+
 # Umgebungsvariablen / Keys (Sicherheit)
 .env

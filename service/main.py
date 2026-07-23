@@ -144,31 +144,41 @@ def delete_seller(seller_id: int):
 
 # --- Buyer CRUD ---
 
+BUYER_COLUMNS = "id, name, strasse, plz, ort, email, geloescht, geloescht_am"
+
+def _buyer_from_row(r):
+    return {
+        "id": r[0], "name": r[1], "strasse": r[2], "plz": r[3], "ort": r[4],
+        "email": r[5], "geloescht": r[6],
+        "geloescht_am": r[7].isoformat() if r[7] else None,
+    }
+
+
 @app.get("/api/buyers")
-def list_buyers():
+def list_buyers(geloescht: int = Query(0, description="0=aktive, 1=alle inkl. gelöschte")):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name, strasse, plz, ort, email FROM Buyer ORDER BY id")
+    if geloescht:
+        cur.execute(f"SELECT {BUYER_COLUMNS} FROM Buyer ORDER BY id")
+    else:
+        cur.execute(f"SELECT {BUYER_COLUMNS} FROM Buyer WHERE geloescht = FALSE ORDER BY id")
     rows = cur.fetchall()
     cur.close()
     conn.close()
-    return [
-        {"id": r[0], "name": r[1], "strasse": r[2], "plz": r[3], "ort": r[4], "email": r[5]}
-        for r in rows
-    ]
+    return [_buyer_from_row(r) for r in rows]
 
 
 @app.get("/api/buyers/{buyer_id}")
 def get_buyer(buyer_id: int):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name, strasse, plz, ort, email FROM Buyer WHERE id = %s", (buyer_id,))
+    cur.execute(f"SELECT {BUYER_COLUMNS} FROM Buyer WHERE id = %s", (buyer_id,))
     r = cur.fetchone()
     cur.close()
     conn.close()
     if not r:
         raise HTTPException(status_code=404, detail="Buyer not found")
-    return {"id": r[0], "name": r[1], "strasse": r[2], "plz": r[3], "ort": r[4], "email": r[5]}
+    return _buyer_from_row(r)
 
 
 @app.post("/api/buyers", status_code=201)
@@ -183,7 +193,7 @@ def create_buyer(buyer: BuyerCreate):
     conn.commit()
     cur.close()
     conn.close()
-    return {"id": new_id, **buyer.model_dump()}
+    return {**buyer.model_dump(), "id": new_id, "geloescht": False, "geloescht_am": None}
 
 
 @app.put("/api/buyers/{buyer_id}")
@@ -205,14 +215,57 @@ def update_buyer(buyer_id: int, buyer: BuyerUpdate):
     return get_buyer(buyer_id)
 
 
-@app.delete("/api/buyers/{buyer_id}", status_code=204)
+@app.delete("/api/buyers/{buyer_id}")
 def delete_buyer(buyer_id: int):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM Buyer WHERE id = %s", (buyer_id,))
+    cur.execute(
+        "UPDATE Buyer SET geloescht = TRUE, geloescht_am = NOW() WHERE id = %s RETURNING id",
+        (buyer_id,),
+    )
+    updated = cur.fetchone()
     conn.commit()
-    deleted = cur.rowcount
     cur.close()
     conn.close()
-    if not deleted:
+    if not updated:
         raise HTTPException(status_code=404, detail="Buyer not found")
+    return get_buyer(buyer_id)
+
+
+@app.put("/api/buyers/{buyer_id}/restore")
+def restore_buyer(buyer_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE Buyer SET geloescht = FALSE, geloescht_am = NULL WHERE id = %s RETURNING id",
+        (buyer_id,),
+    )
+    updated = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not updated:
+        raise HTTPException(status_code=404, detail="Buyer not found")
+    return get_buyer(buyer_id)
+
+
+class RestoreBatch(BaseModel):
+    ids: list[int]
+
+
+@app.put("/api/buyers/restore")
+def restore_buyers_batch(data: RestoreBatch):
+    if not data.ids:
+        raise HTTPException(status_code=400, detail="No IDs provided")
+    conn = get_connection()
+    cur = conn.cursor()
+    placeholders = ", ".join("%s" for _ in data.ids)
+    cur.execute(
+        f"UPDATE Buyer SET geloescht = FALSE, geloescht_am = NULL WHERE id IN ({placeholders}) RETURNING id",
+        data.ids,
+    )
+    restored = [r[0] for r in cur.fetchall()]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"restored": restored}

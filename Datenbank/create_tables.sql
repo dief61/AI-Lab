@@ -24,7 +24,9 @@ CREATE TABLE Buyer (
     strasse TEXT NOT NULL,
     plz TEXT NOT NULL,
     ort TEXT NOT NULL,
-    email TEXT NOT NULL
+    email TEXT NOT NULL,
+    geloescht BOOLEAN NOT NULL DEFAULT FALSE,
+    geloescht_am TIMESTAMP
 );
 
 INSERT INTO Buyer (name, strasse, plz, ort, email)

@@ -4,12 +4,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PORT=8000
 APP="service.main:app"
-PID_FILE="/tmp/uvicorn-demo.pid"
-LOG_FILE="/tmp/uvicorn.log"
+PID_FILE="$BASE_DIR/tmp/uvicorn-demo.pid"
+LOG_FILE="$BASE_DIR/log/uvicorn.log"
+
+get_pids() {
+  lsof -ti :"$PORT" 2>/dev/null | tr '\n' ' ' | xargs
+}
 
 get_pid() {
-  pid=$(lsof -ti :"$PORT" 2>/dev/null)
-  echo "$pid"
+  get_pids | awk '{print $1}'
 }
 
 print_header() {
@@ -21,9 +24,9 @@ print_header() {
 }
 
 status_line() {
-  pid=$(get_pid)
-  if [ -n "$pid" ]; then
-    echo "  Status:  [RUNNING]  (PID: $pid)"
+  pids=$(get_pids)
+  if [ -n "$pids" ]; then
+    echo "  Status:  [RUNNING]  (PID: $pids)"
   else
     echo "  Status:  [STOPPED]"
   fi
