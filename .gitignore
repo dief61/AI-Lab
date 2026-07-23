@@ -1,4 +1,16 @@
+# Aider Rest-Einträge
 .aider*
+
+# Windows / WSL2 Artefakte
 *.Identifier
-__pycache__.opencode/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+.venv/
+
+# OpenCode & AI Tools
 .opencode/
+
+# Umgebungsvariablen / Keys (Sicherheit)
+.env
